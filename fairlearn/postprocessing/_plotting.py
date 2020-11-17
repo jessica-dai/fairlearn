@@ -104,3 +104,89 @@ def plot_threshold_optimizer(threshold_optimizer, ax=None, show_plot=True):
 
     if show_plot:
         plt.show()
+
+def plot_threshold_behavior(thresholder):
+    """Plots the behavior of a learned thresholder.
+
+    :param thresholder: the raw dictionary (not object) containing thresholds, i.e. 
+    self.interpolation_dict from fairlearn.postprocessing.InterpolatedThresholder.
+    :type thresholder: dict
+    """
+    
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise RuntimeError(_MATPLOTLIB_IMPORT_ERROR_MESSAGE)
+        
+    fig, ax = plt.subplots()
+    for group in thresholder:
+        thresh = thresholder[group]
+
+        # baseline probability for all scores
+        if 'p_ignore' not in thresh:
+            p_ign = 0
+            pred_const = 0
+            
+            base = 0
+        else:
+            p_ign = thresh['p_ignore']
+            pred_const = thresh['prediction_constant']
+            
+            base = p_ign*pred_const
+        
+        # determine order of thresholds
+        x0 = thresh['operation0']
+        x1 = thresh['operation1']
+
+        if x0.threshold < x1.threshold: 
+            lothresh = x0
+            loprob = thresh['p0']
+            hithresh = x1 
+            hiprob = thresh['p1']
+        else:
+            lothresh = x1
+            loprob = thresh['p1']
+            hithresh = x0 
+            hiprob = thresh['p0']
+        
+        # start setting up axes 
+        x = [0, lothresh.threshold, hithresh.threshold, 1]
+        y = [base]*4
+
+        # if thresholds are infinity remove
+        infs = [float('inf'), float('-inf')]
+        if lothresh.threshold in infs and hithresh.threshold in infs:
+            x = np.array([0, 1])
+            y = [y[0]] + [y[-1]]
+            
+        elif lothresh.threshold in infs:
+            x.pop(1)
+            y.pop(1)
+
+        elif hithresh.threshold in infs:
+            x.pop(2)
+            y.pop(2)
+        
+        # get correct probabilities
+        x = np.array(x)
+        y = np.array(y, dtype=np.float64)
+
+        if lothresh.operator == '<':
+            toaddlo = np.where(x < lothresh.threshold)
+        else:
+            toaddlo = np.where(x >= lothresh.threshold)
+        if hithresh.operator == '<':
+            toaddhi = np.where(x < hithresh.threshold)
+        else:
+            toaddhi = np.where(x >= hithresh.threshold)
+            
+        y[toaddlo] += (1-p_ign)* loprob
+        y[toaddhi] += (1-p_ign)* hiprob
+
+        l = ax.plot(x, y, drawstyle='steps-post')
+
+    ax.set_title('threshold behavior')
+    ax.set_xlabel('original predicted score')
+    ax.set_ylabel('postprocessed probability')
+    ax.set_ylim(0,1)
+    plt.show()
